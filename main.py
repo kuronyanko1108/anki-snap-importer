@@ -1,6 +1,10 @@
 import tkinter as tk
 from tkinter import messagebox
 from PIL import ImageGrab
+from pathlib import Path
+
+path = Path.cwd() / "capture"
+file_name = path / "screenshot.png"
 
 
 class application(tk.Frame):
@@ -23,9 +27,8 @@ class application(tk.Frame):
 
     def on_click_screenshot(self):
         try:
-            # WSLg/Wayland では xdisplay="" を指定すると外部取得にフォールバックしやすい
-            img = ImageGrab.grab(xdisplay="")
-            img.save("screenshot.png")
+            img = ImageGrab.grab()
+            img.save(file_name)
             messagebox.showinfo("完了", "screenshot.png を保存しました")
         except OSError as e:
             messagebox.showerror(
@@ -53,7 +56,7 @@ APP_POSITION = (
     + PLUS
     + str(Y_POSITION)
 )
-
+print(path)
 root.geometry(APP_POSITION)
 app = application(root=root)
 app.mainloop()

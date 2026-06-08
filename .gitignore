@@ -7,7 +7,8 @@ __pycache__/
 venv/
 .venv/
 env/
-tk_training
+capture/*
+!capture/.gitkeep
 
 # Tool caches
 .mypy_cache/
