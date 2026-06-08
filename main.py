@@ -1,59 +1,59 @@
 import tkinter as tk
-from tkinter import *
-from tkinter import ttk
+from tkinter import messagebox
+from PIL import ImageGrab
 
 
-def new_file():
-    print("新しいファイルを作成しました")
+class application(tk.Frame):
+    def __init__(self, root):
+        super().__init__(
+            master=root, bg="White", width=1000, height=400, border=2, relief="raised"
+        )
+        self.root = root
+        self.pack()
+        self.create_widgets()
+
+    def create_widgets(self):
+        self.create_screenshot_button()
+
+    def create_screenshot_button(self):
+        btn_screenshot = tk.Button(self)
+        btn_screenshot["text"] = "撮影"
+        btn_screenshot["command"] = self.on_click_screenshot
+        btn_screenshot.pack()
+
+    def on_click_screenshot(self):
+        try:
+            # WSLg/Wayland では xdisplay="" を指定すると外部取得にフォールバックしやすい
+            img = ImageGrab.grab(xdisplay="")
+            img.save("screenshot.png")
+            messagebox.showinfo("完了", "screenshot.png を保存しました")
+        except OSError as e:
+            messagebox.showerror(
+                "撮影エラー", f"スクリーンショット取得に失敗しました\n{e}"
+            )
 
 
-def open_file():
-    print("ファイルを開きました")
+root = tk.Tk()
+root.title("anki_snap_importer")
 
+APP_WIDTH = 300
+APP_HEIGHT = 200
+# X_POSITION = root.winfo_screenwidth() - APP_WIDTH
+X_POSITION = 1600
+# Y_POSITION = root.winfo_screenheight() - APP_HEIGHT
+Y_POSITION = 780
+PLUS = "+"
+CRROcE = "x"
+APP_POSITION = (
+    str(APP_WIDTH)
+    + CRROcE
+    + str(APP_HEIGHT)
+    + PLUS
+    + str(X_POSITION)
+    + PLUS
+    + str(Y_POSITION)
+)
 
-def copy_text():
-    print("テキストをコピーしました。")
-
-
-def paste_text():
-    print("テキストを貼り付けました")
-
-
-def show_context_menu(event):
-    context_menu.post(event.x_root, event.y_root)
-
-
-def show_info():
-    messagebox.showinfo("情報", "これは情報メッセージボックスです！")
-
-
-root = Tk()
-root.geometry("600x300")
-
-# メニューバーの構成
-menubar = Menu(root)
-file_menu = Menu(menubar, tearoff=0)
-menubar.add_cascade(label="ファイル", menu=file_menu)
-file_menu.add_command(label="新規作成", command=new_file)
-file_menu.add_command(label="開く", command=open_file)
-file_menu.add_separator()
-file_menu.add_command(label="終了", command=root.quit)
-root.config(menu=menubar)
-
-# コンテキストメニューの構成
-context_menu = Menu(root, tearoff=0)
-context_menu.add_command(label="コピー", command=copy_text)
-context_menu.add_command(label="貼り付け", command=paste_text)
-
-# ボタンの配置
-btn_info = tk.Button(root, text="情報メッセージ", command=show_info)
-btn_info.pack(pady=5)
-
-root.bind("<Button-3>", show_context_menu)
-
-# 入力フィールドの配置
-feet = StringVar()
-feet_entry = ttk.Entry(root, width=7, textvariable=feet)
-feet_entry.pack(pady=5)
-
-root.mainloop()
+root.geometry(APP_POSITION)
+app = application(root=root)
+app.mainloop()
