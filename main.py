@@ -5,13 +5,35 @@ from pathlib import Path
 
 path = Path.cwd() / "capture"
 file_name = path / "screenshot.png"
+APP_WIDTH = 400
+APP_HEIGHT = 200
 
 
-class application(tk.Frame):
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("anki_snap_importer")
+        self.geometry(self.default_main_window_position())
+
+        self.main_frame = MainLayer(self)
+        self.main_frame.pack(fill="both", expand="True")
+
+    def default_main_window_position(self):
+        x_position = self.winfo_screenwidth()
+        y_position = self.winfo_screenheight() - APP_HEIGHT
+
+        # return f"{APP_WIDTH}x{APP_HEIGHT}+{x_position}+{y_position}"
+        return f"{APP_WIDTH}x{APP_HEIGHT}"
+
+    def show_main_window(self):
+        self.attributes("-fullscreen", False)
+        self.attributes("-alpha", 1.0)
+        self.configure(bg="SystemButtonFace")
+
+
+class MainLayer(tk.Frame):
     def __init__(self, root):
-        super().__init__(
-            master=root, bg="White", width=1000, height=400, border=2, relief="raised"
-        )
+        super().__init__(master=root, bg="White")
         self.root = root
         self.pack()
         self.create_widgets()
@@ -26,8 +48,71 @@ class application(tk.Frame):
         btn_screenshot.pack()
 
     def on_click_screenshot(self):
+        self.show_screenshot()
+
+    def show_screenshot(self):
+        self.pack_forget()
+        screen_layer = ScreenShotLayer(self.root)
+        screen_layer.pack(fill="both", expand=True)
+
+
+class ScreenShotLayer(tk.Canvas):
+    def __init__(self, root):
+        super().__init__(master=root)
+        self.root = root
+        self.rect_id = None
+
+        # ウィンドウのフルスクリーン・半透明化
+        self.root.configure(bg="Black")
+        self.root.attributes("-fullscreen", True)
+        self.root.attributes("-alpha", 0.5)
+
+        # イベントのバインド
+        self.root.bind("<ButtonPress-1>", self.on_press)
+        self.root.bind("<B1-Motion>", self.on_drag)
+        self.root.bind("<ButtonRelease-1>", self.on_release)
+
+    def on_press(self, event):
+        self.start_x = event.x
+        self.start_y = event.y
+        print(f"X座標: {self.start_x }、Y座標: {self.start_y }")
+
+    def on_drag(self, event):
+        self.end_x = event.x
+        self.end_y = event.y
+        self.create_screenshot_area()
+        print(f"ドラッグX座標: {self.end_x }、ドラッグY座標: {self.end_y}")
+
+    def on_release(self, event):
+        self.end_x = event.x
+        self.end_y = event.y
+
+        self.screenshot()
+        self.destroy()
+        self.root.show_main_window()
+
+        self.root.main_frame.pack(fill="both", expand=True)
+
+    def create_screenshot_area(self):
+        if self.rect_id:
+            self.delete(self.rect_id)
+
+        self.rect_id = self.create_rectangle(
+            self.start_x,
+            self.start_y,
+            self.end_x,
+            self.end_y,
+            fill="white",
+        )
+
+    def screenshot(self):
+        x1 = min(self.start_x, self.end_x)
+        y1 = min(self.start_y, self.end_y)
+        x2 = max(self.start_x, self.end_x)
+        y2 = max(self.start_y, self.end_y)
+
         try:
-            img = ImageGrab.grab()
+            img = ImageGrab.grab(bbox=(x1, y1, x2, y2))
             img.save(file_name)
             messagebox.showinfo("完了", "screenshot.png を保存しました")
         except OSError as e:
@@ -36,27 +121,6 @@ class application(tk.Frame):
             )
 
 
-root = tk.Tk()
-root.title("anki_snap_importer")
-
-APP_WIDTH = 300
-APP_HEIGHT = 200
-# X_POSITION = root.winfo_screenwidth() - APP_WIDTH
-X_POSITION = 1600
-# Y_POSITION = root.winfo_screenheight() - APP_HEIGHT
-Y_POSITION = 780
-PLUS = "+"
-CRROcE = "x"
-APP_POSITION = (
-    str(APP_WIDTH)
-    + CRROcE
-    + str(APP_HEIGHT)
-    + PLUS
-    + str(X_POSITION)
-    + PLUS
-    + str(Y_POSITION)
-)
-print(path)
-root.geometry(APP_POSITION)
-app = application(root=root)
-app.mainloop()
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
