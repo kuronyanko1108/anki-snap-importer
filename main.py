@@ -2,9 +2,21 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import ImageGrab
 from pathlib import Path
+import ctypes
+import platform
+
+# ==========================================
+# 1. DPIスケール（拡大率）のずれを防ぐ設定
+# ==========================================
+if platform.system() == "Windows":
+    try:
+        # Windows 8.1以降向けのDPI認識設定（高精度）
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        # 古いWindows向けのフォールバック
+        ctypes.windll.user32.SetProcessDPIAware()
 
 path = Path.cwd() / "capture"
-file_name = path / "screenshot.png"
 APP_WIDTH = 400
 APP_HEIGHT = 200
 
@@ -16,7 +28,7 @@ class App(tk.Tk):
         self.geometry(self.default_main_window_position())
 
         self.main_frame = MainLayer(self)
-        self.main_frame.pack(fill="both", expand="True")
+        self.main_frame.pack(fill="both", expand=True)
 
     def default_main_window_position(self):
         x_position = self.winfo_screenwidth()
@@ -61,6 +73,7 @@ class ScreenShotLayer(tk.Canvas):
         super().__init__(master=root)
         self.root = root
         self.rect_id = None
+        self.border_width = 10
 
         # ウィンドウのフルスクリーン・半透明化
         self.root.configure(bg="Black")
@@ -81,11 +94,12 @@ class ScreenShotLayer(tk.Canvas):
         self.end_x = event.x
         self.end_y = event.y
         self.create_screenshot_area()
-        print(f"ドラッグX座標: {self.end_x }、ドラッグY座標: {self.end_y}")
 
     def on_release(self, event):
         self.end_x = event.x
         self.end_y = event.y
+        print(f"ドラッグX座標: {self.end_x }、ドラッグY座標: {self.end_y}")
+        print(self.root.winfo_screenwidth(), self.root.winfo_screenheight())
 
         self.screenshot()
         self.destroy()
@@ -102,14 +116,18 @@ class ScreenShotLayer(tk.Canvas):
             self.start_y,
             self.end_x,
             self.end_y,
+            outline="Cyan",
+            width=self.border_width,
             fill="white",
         )
 
     def screenshot(self):
-        x1 = min(self.start_x, self.end_x)
-        y1 = min(self.start_y, self.end_y)
-        x2 = max(self.start_x, self.end_x)
-        y2 = max(self.start_y, self.end_y)
+        x1 = min(self.start_x, self.end_x) + self.border_width
+        y1 = min(self.start_y, self.end_y) + self.border_width
+        x2 = max(self.start_x, self.end_x) - self.border_width
+        y2 = max(self.start_y, self.end_y) - self.border_width
+
+        file_name = path / "screenshot.png"
 
         try:
             img = ImageGrab.grab(bbox=(x1, y1, x2, y2))
