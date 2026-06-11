@@ -4,6 +4,11 @@ from PIL import ImageGrab
 from pathlib import Path
 import ctypes
 import platform
+import datetime
+
+path = Path.cwd() / "capture"
+APP_WIDTH = 400
+APP_HEIGHT = 200
 
 # ==========================================
 # 1. DPIスケール（拡大率）のずれを防ぐ設定
@@ -15,10 +20,6 @@ if platform.system() == "Windows":
     except Exception:
         # 古いWindows向けのフォールバック
         ctypes.windll.user32.SetProcessDPIAware()
-
-path = Path.cwd() / "capture"
-APP_WIDTH = 400
-APP_HEIGHT = 200
 
 
 class App(tk.Tk):
@@ -74,9 +75,10 @@ class ScreenShotLayer(tk.Canvas):
         self.root = root
         self.rect_id = None
         self.border_width = 10
+        self.create_file_name()
 
         # ウィンドウのフルスクリーン・半透明化
-        self.root.configure(bg="Black")
+        self.root.configure(bg="red")
         self.root.attributes("-fullscreen", True)
         self.root.attributes("-alpha", 0.5)
 
@@ -127,18 +129,44 @@ class ScreenShotLayer(tk.Canvas):
         x2 = max(self.start_x, self.end_x) - self.border_width
         y2 = max(self.start_y, self.end_y) - self.border_width
 
-        file_name = path / "screenshot.png"
+        today = self.get_today_ymd()
+        file_name = self.create_file_name()
+        new_file_name = path / file_name
+        # スクリーンショットレイヤーを一時的に非表示にする
+        self.root.withdraw()
 
         try:
             img = ImageGrab.grab(bbox=(x1, y1, x2, y2))
-            img.save(file_name)
-            messagebox.showinfo("完了", "screenshot.png を保存しました")
+            img.save(new_file_name)
+            messagebox.showinfo("完了", "保存しました")
         except OSError as e:
             messagebox.showerror(
                 "撮影エラー", f"スクリーンショット取得に失敗しました\n{e}"
             )
 
+        # スクリーンショットレイヤーを再表示する
+        self.root.deiconify()
+
+    def create_file_name(self):
+        today = self.get_today_ymd()
+        today_files = sorted(Path(path).glob(f"*{today}*.png"))
+
+        if not today_files:
+            return f"{today}_question_001.png"
+        else:
+            last_file = today_files[-1].stem
+            last_number = int(last_file.split("_")[-1])
+
+            return f"{today}_question_{last_number + 1:03d}.png"
+
+    def get_today_ymd(self):
+        return datetime.date.today().strftime("%Y%m%d")
+
 
 if __name__ == "__main__":
     app = App()
+    # # dir1_g = Path(path).glob("*.png")
+    # # paths = [x.name for x in dir1_g]
+
+    # print(paths)
     app.mainloop()
