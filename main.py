@@ -48,34 +48,41 @@ class MainLayer(tk.Frame):
     def __init__(self, root):
         super().__init__(master=root, bg="White")
         self.root = root
-        self.pack()
+        self.pack(fill="both", expand=True)
         self.create_widgets()
 
     def create_widgets(self):
-        self.create_screenshot_button()
+        button_label = ["問題を撮影", "解答を撮影"]
 
-    def create_screenshot_button(self):
+        for i in range(len(button_label)):
+            self.columnconfigure(i, weight=1, uniform="buttons")
+
+        for column_number, btn in enumerate(button_label):
+            self.create_screenshot_button(column_number, btn)
+
+    def create_screenshot_button(self, column_number, text_name):
         btn_screenshot = tk.Button(self)
-        btn_screenshot["text"] = "撮影"
-        btn_screenshot["command"] = self.on_click_screenshot
-        btn_screenshot.pack()
+        btn_screenshot["text"] = text_name
+        btn_screenshot["command"] = lambda: self.on_click_screenshot(column_number)
 
-    def on_click_screenshot(self):
-        self.show_screenshot()
+        btn_screenshot.grid(row=0, column=column_number, padx=3, sticky="we")
 
-    def show_screenshot(self):
+    def on_click_screenshot(self, state):
+        self.show_screenshot(state)
+
+    def show_screenshot(self, state):
         self.pack_forget()
-        screen_layer = ScreenShotLayer(self.root)
+        screen_layer = ScreenShotLayer(self.root, state)
         screen_layer.pack(fill="both", expand=True)
 
 
 class ScreenShotLayer(tk.Canvas):
-    def __init__(self, root):
+    def __init__(self, root, state):
         super().__init__(master=root)
         self.root = root
         self.rect_id = None
         self.border_width = 10
-        self.create_file_name()
+        self.reset_coordinate()
 
         # ウィンドウのフルスクリーン・半透明化
         self.root.configure(bg="red")
@@ -83,27 +90,34 @@ class ScreenShotLayer(tk.Canvas):
         self.root.attributes("-alpha", 0.5)
 
         # イベントのバインド
-        self.root.bind("<ButtonPress-1>", self.on_press)
-        self.root.bind("<B1-Motion>", self.on_drag)
-        self.root.bind("<ButtonRelease-1>", self.on_release)
+        self.bind("<ButtonPress-1>", self.on_press)
+        self.bind("<B1-Motion>", self.on_drag)
+        self.bind("<ButtonRelease-1>", lambda e: self.on_release(e, state))
+
+    def reset_coordinate(self):
+        self.start_x = 0
+        self.start_y = 0
+        self.end_x = 0
+        self.end_y = 0
 
     def on_press(self, event):
         self.start_x = event.x
         self.start_y = event.y
-        print(f"X座標: {self.start_x }、Y座標: {self.start_y }")
+        # print(f"X座標: {self.start_x }、Y座標: {self.start_y }")
 
     def on_drag(self, event):
         self.end_x = event.x
         self.end_y = event.y
         self.create_screenshot_area()
 
-    def on_release(self, event):
+    def on_release(self, event, state):
         self.end_x = event.x
         self.end_y = event.y
-        print(f"ドラッグX座標: {self.end_x }、ドラッグY座標: {self.end_y}")
-        print(self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+        # print(f"ドラッグX座標: {self.end_x }、ドラッグY座標: {self.end_y}")
+        # print(self.root.winfo_screenwidth(), self.root.winfo_screenheight())
 
-        self.screenshot()
+        self.screenshot(state)
+
         self.destroy()
         self.root.show_main_window()
 
@@ -123,15 +137,16 @@ class ScreenShotLayer(tk.Canvas):
             fill="white",
         )
 
-    def screenshot(self):
+    def screenshot(self, state):
         x1 = min(self.start_x, self.end_x) + self.border_width
         y1 = min(self.start_y, self.end_y) + self.border_width
         x2 = max(self.start_x, self.end_x) - self.border_width
         y2 = max(self.start_y, self.end_y) - self.border_width
 
-        today = self.get_today_ymd()
-        file_name = self.create_file_name()
+        # スクリーンショットの保存ファイル名を生成する
+        file_name = self.create_file_name(state)
         new_file_name = path / file_name
+
         # スクリーンショットレイヤーを一時的に非表示にする
         self.root.withdraw()
 
@@ -147,17 +162,23 @@ class ScreenShotLayer(tk.Canvas):
         # スクリーンショットレイヤーを再表示する
         self.root.deiconify()
 
-    def create_file_name(self):
+    def create_file_name(self, state):
         today = self.get_today_ymd()
-        today_files = sorted(Path(path).glob(f"*{today}*.png"))
+
+        if state == 0:
+            today_files = sorted(Path(path).glob(f"*{today}*question*.png"))
+        elif state == 1:
+            today_files = sorted(Path(path).glob(f"*{today}*answer*.png"))
+
+        kind = "question" if state == 0 else "answer"
 
         if not today_files:
-            return f"{today}_question_001.png"
+            return f"{today}_{kind}_001.png"
         else:
             last_file = today_files[-1].stem
             last_number = int(last_file.split("_")[-1])
 
-            return f"{today}_question_{last_number + 1:03d}.png"
+            return f"{today}_{kind}_{last_number + 1:03d}.png"
 
     def get_today_ymd(self):
         return datetime.date.today().strftime("%Y%m%d")
@@ -165,8 +186,4 @@ class ScreenShotLayer(tk.Canvas):
 
 if __name__ == "__main__":
     app = App()
-    # # dir1_g = Path(path).glob("*.png")
-    # # paths = [x.name for x in dir1_g]
-
-    # print(paths)
     app.mainloop()
