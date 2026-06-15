@@ -5,6 +5,10 @@ from pathlib import Path
 import ctypes
 import platform
 import datetime
+import requests
+import json
+
+from src import utils
 
 path = Path.cwd() / "capture"
 APP_WIDTH = 400
@@ -60,12 +64,21 @@ class MainLayer(tk.Frame):
         for column_number, btn in enumerate(button_label):
             self.create_screenshot_button(column_number, btn)
 
+        self.create_add_question_button()
+
+    def create_add_question_button(self):
+        btn_add_question = tk.Button(self)
+        btn_add_question["text"] = "Ankiに問題を追加"
+        btn_add_question["command"] = self.on_click_add_question
+
+        btn_add_question.grid(row=1, column=0, columnspan=2, sticky="nsew")
+
     def create_screenshot_button(self, column_number, text_name):
         btn_screenshot = tk.Button(self)
         btn_screenshot["text"] = text_name
         btn_screenshot["command"] = lambda: self.on_click_screenshot(column_number)
 
-        btn_screenshot.grid(row=0, column=column_number, padx=3, sticky="we")
+        btn_screenshot.grid(row=0, column=column_number, padx=1, sticky="we")
 
     def on_click_screenshot(self, state):
         self.show_screenshot(state)
@@ -75,17 +88,57 @@ class MainLayer(tk.Frame):
         screen_layer = ScreenShotLayer(self.root, state)
         screen_layer.pack(fill="both", expand=True)
 
+    def on_click_add_question(self):
+        deck_name = "テスト"
+        # 最新の問題・解答データのファイルパスを取得する
+        question, answer = utils.get_latest_file(path)
+
+        # Ankiのメディアフォルダへコピーする
+        for file_path in (question, answer):
+            file_data = utils.convert_file_to_base64(file_path)
+            self.request_anki_connect(
+                "storeMediaFile", filename=file_path.name, data=file_data
+            )
+
+        # 問題・解答をAnkiに追加する
+        self.add_question(deck_name, question.name, answer.name)
+
+    def request_anki_connect(self, action, **params):
+        return requests.post(
+            "http://localhost:8765",
+            json={"action": action, "params": params, "version": 6},
+        ).json()
+
+    def add_question(self, deck_name, front, back, tags=None):
+        if tags is None:
+            tags = []
+
+        self.request_anki_connect("createDeck", deck=deck_name)
+
+        return self.request_anki_connect(
+            "addNote",
+            note={
+                "deckName": deck_name,
+                "modelName": "基本",
+                "fields": {
+                    "表面": f"<img src='{front}'>",
+                    "裏面": f"<img src='{back}'>",
+                },
+                "tags": tags,
+            },
+        )
+
 
 class ScreenShotLayer(tk.Canvas):
     def __init__(self, root, state):
         super().__init__(master=root)
         self.root = root
         self.rect_id = None
+        self.config(bg="Gray")
         self.border_width = 10
         self.reset_coordinate()
 
         # ウィンドウのフルスクリーン・半透明化
-        self.root.configure(bg="red")
         self.root.attributes("-fullscreen", True)
         self.root.attributes("-alpha", 0.5)
 
@@ -163,7 +216,7 @@ class ScreenShotLayer(tk.Canvas):
         self.root.deiconify()
 
     def create_file_name(self, state):
-        today = self.get_today_ymd()
+        today = utils.get_today_ymd()
 
         if state == 0:
             today_files = sorted(Path(path).glob(f"*{today}*question*.png"))
@@ -180,10 +233,10 @@ class ScreenShotLayer(tk.Canvas):
 
             return f"{today}_{kind}_{last_number + 1:03d}.png"
 
-    def get_today_ymd(self):
-        return datetime.date.today().strftime("%Y%m%d")
-
 
 if __name__ == "__main__":
+    q, a = utils.get_latest_file(path)
+    print(q, a)
+
     app = App()
     app.mainloop()
