@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-from PIL import ImageGrab
+from PIL import ImageGrab, ImageTk, Image
 from pathlib import Path
 import ctypes
 import platform
@@ -11,8 +11,8 @@ import json
 from src import utils
 
 path = Path.cwd() / "capture"
-APP_WIDTH = 400
-APP_HEIGHT = 200
+APP_WIDTH = 750
+APP_HEIGHT = 500
 
 # ==========================================
 # 1. DPIスケール（拡大率）のずれを防ぐ設定
@@ -27,6 +27,8 @@ if platform.system() == "Windows":
 
 
 class App(tk.Tk):
+    """アプリ全体のウィンドウ管理とメイン画面表示を担う Tk ルート。"""
+
     def __init__(self):
         super().__init__()
         self.title("anki_snap_importer")
@@ -49,10 +51,13 @@ class App(tk.Tk):
 
 
 class MainLayer(tk.Frame):
+    """メイン操作画面。"""
+
     def __init__(self, root):
         super().__init__(master=root, bg="White")
         self.root = root
         self.pack(fill="both", expand=True)
+        self.images = []
         self.create_widgets()
 
     def create_widgets(self):
@@ -64,14 +69,44 @@ class MainLayer(tk.Frame):
         for column_number, btn in enumerate(button_label):
             self.create_screenshot_button(column_number, btn)
 
+        self.create_image_area()
+
         self.create_add_question_button()
+
+    def create_image_area(self):
+        question_image_path = "./capture/20260616_question_001.png"
+        answer_path = "./capture/20260616_answer_001.png"
+
+        print(question_image_path, answer_path)
+
+        for i, p in enumerate((question_image_path, answer_path)):
+            image_area = tk.Canvas(self, width=APP_WIDTH, height=APP_HEIGHT)
+            # 画像ファイルを開く
+            original_image = Image.open(p)
+            w, h = original_image.width, original_image.height
+
+            resized_image = original_image.resize(
+                (int(w * (APP_WIDTH / h)), int((h * APP_HEIGHT / h)))
+            )
+
+            photo_image = ImageTk.PhotoImage(resized_image)
+            self.images.append(photo_image)
+
+            image_area.create_image(
+                0,
+                0,
+                anchor="nw",
+                image=photo_image,
+            )
+
+            image_area.grid(row=1, column=i, sticky="nsew")
 
     def create_add_question_button(self):
         btn_add_question = tk.Button(self)
         btn_add_question["text"] = "Ankiに問題を追加"
         btn_add_question["command"] = self.on_click_add_question
 
-        btn_add_question.grid(row=1, column=0, columnspan=2, sticky="nsew")
+        btn_add_question.grid(row=2, column=0, columnspan=2, sticky="nsew")
 
     def create_screenshot_button(self, column_number, text_name):
         btn_screenshot = tk.Button(self)
@@ -104,10 +139,25 @@ class MainLayer(tk.Frame):
         self.add_question(deck_name, question.name, answer.name)
 
     def request_anki_connect(self, action, **params):
-        return requests.post(
-            "http://localhost:8765",
-            json={"action": action, "params": params, "version": 6},
-        ).json()
+        try:
+            response = requests.post(
+                "http://localhost:8765",
+                json={"action": action, "params": params, "version": 6},
+            )
+
+            # 接続の確認
+            response.raise_for_status()
+
+            result = response.json()
+
+            if result["error"] is not None:
+                raise RuntimeError(result["error"])
+
+            return result
+
+        except requests.exceptions.ConnectionError as e:
+            print(e)
+            raise RuntimeError("Ankiが起動していません")
 
     def add_question(self, deck_name, front, back, tags=None):
         if tags is None:
@@ -130,6 +180,8 @@ class MainLayer(tk.Frame):
 
 
 class ScreenShotLayer(tk.Canvas):
+    """画面上でドラッグ選択を受け付け、指定範囲を画像として保存するレイヤー。"""
+
     def __init__(self, root, state):
         super().__init__(master=root)
         self.root = root
@@ -234,9 +286,36 @@ class ScreenShotLayer(tk.Canvas):
             return f"{today}_{kind}_{last_number + 1:03d}.png"
 
 
-if __name__ == "__main__":
-    q, a = utils.get_latest_file(path)
-    print(q, a)
+class PreviewImageLayer(tk.Canvas):
+    def __init__(self, root=None, img=None):
+        super().__init__(master=root, bg="White")
+        self.root = root
+        self.pack(fill="both", expand=True)
 
+        self.img = img
+        self.create_widgets()
+
+    def create_widgets(self):
+        if self.img is None:
+            self.root.create_text(150, 100, text="No Image")
+        else:
+            self.create_img()
+
+    def create_img(self):
+        # 画像ファイルを開く
+        self.photo_image = ImageTk.PhotoImage(file=self.img)
+
+        # キャンバスのサイズを取得
+        canvas_width = self.root.winfo_width()
+        canvas_height = self.root.winfo_height()
+
+        self.root.create_image(
+            canvas_width / 2,
+            canvas_height / 2,
+            image=self.img,
+        )
+
+
+if __name__ == "__main__":
     app = App()
     app.mainloop()
