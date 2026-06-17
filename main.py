@@ -4,15 +4,13 @@ from PIL import ImageGrab, ImageTk, Image
 from pathlib import Path
 import ctypes
 import platform
-import datetime
 import requests
-import json
 
 from src import utils
 
 path = Path.cwd() / "capture"
-APP_WIDTH = 750
-APP_HEIGHT = 500
+APP_WIDTH = 900
+APP_HEIGHT = 450
 
 # ==========================================
 # 1. DPIスケール（拡大率）のずれを防ぐ設定
@@ -76,25 +74,35 @@ class MainLayer(tk.Frame):
     def create_image_area(self):
         question_image_path = "./capture/20260616_question_001.png"
         answer_path = "./capture/20260616_answer_001.png"
-
-        print(question_image_path, answer_path)
+        image_width_area = int(APP_WIDTH * 0.75)
+        image_height_area = int(APP_HEIGHT * 0.75)
 
         for i, p in enumerate((question_image_path, answer_path)):
-            image_area = tk.Canvas(self, width=APP_WIDTH, height=APP_HEIGHT)
-            # 画像ファイルを開く
+            image_area = tk.Canvas(
+                self, width=image_width_area, height=image_height_area
+            )
+
+            # 画像を開く
             original_image = Image.open(p)
             w, h = original_image.width, original_image.height
 
-            resized_image = original_image.resize(
-                (int(w * (APP_WIDTH / h)), int((h * APP_HEIGHT / h)))
-            )
+            # アスペクト比を維持したまま表示領域に収まるスケールを計算
+            fit_scale = min(image_width_area / w, image_height_area / h)
 
+            # 画像をリサイズ
+            resized_image = original_image.resize(
+                (int(w * fit_scale), int(h * fit_scale))
+            )
             photo_image = ImageTk.PhotoImage(resized_image)
             self.images.append(photo_image)
 
+            # 中央配置の座標を計算
+            x = (image_width_area - resized_image.width) // 2
+            y = (image_height_area - resized_image.height) // 2
+
             image_area.create_image(
-                0,
-                0,
+                x,
+                y,
                 anchor="nw",
                 image=photo_image,
             )
