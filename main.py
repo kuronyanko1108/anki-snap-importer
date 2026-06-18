@@ -12,6 +12,10 @@ path = Path.cwd() / "capture"
 APP_WIDTH = 900
 APP_HEIGHT = 450
 
+STATE_WAITING_QUESTION = 0
+STATE_WAITING_ANSWER = 1
+STATE_READY_TO_REGISTER = 2
+
 # ==========================================
 # 1. DPIスケール（拡大率）のずれを防ぐ設定
 # ==========================================
@@ -29,14 +33,14 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("anki_snap_importer")
+        self.title("AnkiSnapImporter")
         self.geometry(self.default_main_window_position())
 
         self.main_frame = MainLayer(self)
         self.main_frame.pack(fill="both", expand=True)
 
     def default_main_window_position(self):
-        x_position = self.winfo_screenwidth()
+        x_position = self.winfo_screenwidth() - APP_WIDTH
         y_position = self.winfo_screenheight() - APP_HEIGHT
 
         # return f"{APP_WIDTH}x{APP_HEIGHT}+{x_position}+{y_position}"
@@ -54,22 +58,38 @@ class MainLayer(tk.Frame):
     def __init__(self, root):
         super().__init__(master=root, bg="White")
         self.root = root
+        self.question_path = ""
+        self.answer_path = ""
+        self.state = STATE_WAITING_QUESTION
+
         self.pack(fill="both", expand=True)
         self.images = []
         self.create_widgets()
 
     def create_widgets(self):
-        button_label = ["問題を撮影", "解答を撮影"]
 
-        for i in range(len(button_label)):
+        for i in range(2):
             self.columnconfigure(i, weight=1, uniform="buttons")
 
-        for column_number, btn in enumerate(button_label):
-            self.create_screenshot_button(column_number, btn)
+        self.btn_question = self.create_screenshot_button(
+            0, "問題を撮影", STATE_WAITING_QUESTION
+        )
+        self.btn_answer = self.create_screenshot_button(
+            1, "解答を撮影", STATE_WAITING_ANSWER
+        )
 
         self.create_image_area()
 
-        self.create_add_question_button()
+        self.btn_anki_register = self.create_anki_register_button()
+
+    def create_screenshot_button(self, column, text_name, state):
+        btn_screenshot = tk.Button(self)
+        btn_screenshot["text"] = text_name
+        btn_screenshot["command"] = lambda s=state: self.on_click_screenshot(s)
+        btn_screenshot["state"] = "normal" if self.state == state else "disabled"
+
+        btn_screenshot.grid(row=0, column=column, padx=1, sticky="we")
+        return btn_screenshot
 
     def create_image_area(self):
         question_image_path = "./capture/20260616_question_001.png"
@@ -109,29 +129,28 @@ class MainLayer(tk.Frame):
 
             image_area.grid(row=1, column=i, sticky="nsew")
 
-    def create_add_question_button(self):
-        btn_add_question = tk.Button(self)
-        btn_add_question["text"] = "Ankiに問題を追加"
-        btn_add_question["command"] = self.on_click_add_question
+    def create_anki_register_button(self):
+        btn_anki_register = tk.Button(self)
+        btn_anki_register["text"] = "Ankiに登録"
+        btn_anki_register["command"] = self.on_click_anki_register
+        btn_anki_register["state"] = (
+            "normal" if self.state == STATE_READY_TO_REGISTER else "disabled"
+        )
 
-        btn_add_question.grid(row=2, column=0, columnspan=2, sticky="nsew")
+        btn_anki_register.grid(row=2, column=0, columnspan=2, sticky="nsew")
 
-    def create_screenshot_button(self, column_number, text_name):
-        btn_screenshot = tk.Button(self)
-        btn_screenshot["text"] = text_name
-        btn_screenshot["command"] = lambda: self.on_click_screenshot(column_number)
-
-        btn_screenshot.grid(row=0, column=column_number, padx=1, sticky="we")
+        return btn_anki_register
 
     def on_click_screenshot(self, state):
         self.show_screenshot(state)
 
     def show_screenshot(self, state):
+
         self.pack_forget()
         screen_layer = ScreenShotLayer(self.root, state)
         screen_layer.pack(fill="both", expand=True)
 
-    def on_click_add_question(self):
+    def on_click_anki_register(self):
         deck_name = "テスト"
         # 最新の問題・解答データのファイルパスを取得する
         question, answer = utils.get_latest_file(path)
@@ -145,6 +164,11 @@ class MainLayer(tk.Frame):
 
         # 問題・解答をAnkiに追加する
         self.add_question(deck_name, question.name, answer.name)
+
+        self.state = STATE_WAITING_QUESTION
+        self.update_button_state()
+
+        messagebox.showinfo("完了", f"Ankiに問題を登録しました")
 
     def request_anki_connect(self, action, **params):
         try:
@@ -186,6 +210,18 @@ class MainLayer(tk.Frame):
             },
         )
 
+    def update_button_state(self):
+        self.btn_question["state"] = (
+            "normal" if self.state == STATE_WAITING_QUESTION else "disabled"
+        )
+        self.btn_answer["state"] = (
+            "normal" if self.state == STATE_WAITING_ANSWER else "disabled"
+        )
+
+        self.btn_anki_register["state"] = (
+            "normal" if self.state == STATE_READY_TO_REGISTER else "disabled"
+        )
+
 
 class ScreenShotLayer(tk.Canvas):
     """画面上でドラッグ選択を受け付け、指定範囲を画像として保存するレイヤー。"""
@@ -216,7 +252,6 @@ class ScreenShotLayer(tk.Canvas):
     def on_press(self, event):
         self.start_x = event.x
         self.start_y = event.y
-        # print(f"X座標: {self.start_x }、Y座標: {self.start_y }")
 
     def on_drag(self, event):
         self.end_x = event.x
@@ -226,13 +261,18 @@ class ScreenShotLayer(tk.Canvas):
     def on_release(self, event, state):
         self.end_x = event.x
         self.end_y = event.y
-        # print(f"ドラッグX座標: {self.end_x }、ドラッグY座標: {self.end_y}")
-        # print(self.root.winfo_screenwidth(), self.root.winfo_screenheight())
 
         self.screenshot(state)
 
         self.destroy()
         self.root.show_main_window()
+
+        if self.root.main_frame.state == STATE_WAITING_QUESTION:
+            self.root.main_frame.state = STATE_WAITING_ANSWER
+        elif self.root.main_frame.state == STATE_WAITING_ANSWER:
+            self.root.main_frame.state = STATE_READY_TO_REGISTER
+
+        self.root.main_frame.update_button_state()
 
         self.root.main_frame.pack(fill="both", expand=True)
 
@@ -278,12 +318,12 @@ class ScreenShotLayer(tk.Canvas):
     def create_file_name(self, state):
         today = utils.get_today_ymd()
 
-        if state == 0:
+        if state == STATE_WAITING_QUESTION:
             today_files = sorted(Path(path).glob(f"*{today}*question*.png"))
-        elif state == 1:
+        elif state == STATE_WAITING_ANSWER:
             today_files = sorted(Path(path).glob(f"*{today}*answer*.png"))
 
-        kind = "question" if state == 0 else "answer"
+        kind = "question" if state == STATE_WAITING_QUESTION else "answer"
 
         if not today_files:
             return f"{today}_{kind}_001.png"
