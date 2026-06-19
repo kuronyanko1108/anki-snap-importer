@@ -12,20 +12,23 @@ def get_today_ymd() -> str:
     return datetime.date.today().strftime("%Y%m%d")
 
 
-def get_latest_file(folder_path: Path) -> tuple[Path, Path]:
+def get_latest_file(folder_path: Path) -> tuple[Path | None, Path | None]:
     """当日分の最新の問題画像と解答画像のパスを返す。"""
     today = get_today_ymd()
 
     latest_question_files = sorted(Path(folder_path).glob(f"*{today}*question*.png"))
     latest_answer_files = sorted(Path(folder_path).glob(f"*{today}*answer*.png"))
 
-    if not latest_question_files:
-        raise UtilsException("問題データを取得できませんでした。")
+    # if not latest_question_files:
+    #     raise UtilsException("問題データを取得できませんでした。")
 
-    if not latest_answer_files:
-        raise UtilsException("解答データを取得できませんでした。")
+    # if not latest_answer_files:
+    #     raise UtilsException("解答データを取得できませんでした。")
 
-    return latest_question_files[-1], latest_answer_files[-1]
+    latest_question_file = latest_question_files[-1] if latest_question_files else None
+    latest_answer_file = latest_answer_files[-1] if latest_answer_files else None
+
+    return latest_question_file, latest_answer_file
 
 
 def convert_file_to_base64(file_path: Path) -> str:
