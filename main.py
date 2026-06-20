@@ -14,7 +14,10 @@ APP_WIDTH = 900
 APP_HEIGHT = 450
 
 IMAGE_AREA_SCALE = 0.75
+IMAGE_WIDTH_AREA = int(APP_WIDTH * IMAGE_AREA_SCALE)
+IMAGE_HEIGHT_AREA = int(APP_HEIGHT * IMAGE_AREA_SCALE)
 MARGIN_SCALE = 5
+
 
 STATE_WAITING_QUESTION = 0
 STATE_WAITING_ANSWER = 1
@@ -67,13 +70,13 @@ class MainLayer(tk.Frame):
     def __init__(self, root):
         super().__init__(master=root, bg="White")
         self.root = root
-        self.question_path = ""
-        self.answer_path = ""
+        self.question_path = None
+        self.answer_path = None
         self.state = STATE_WAITING_QUESTION
 
-        self.pack(fill="both", expand=True)
         self.images = []
         self.create_widgets()
+        self.pack(fill="both", expand=True)
 
     def create_widgets(self):
         """画面に必要なウィジェットを生成・配置する。"""
@@ -94,7 +97,6 @@ class MainLayer(tk.Frame):
         )
 
         # 画像プレビューエリアの配置
-        self.question_path, self.answer_path = utils.get_latest_file(path)
         self.preview_question = self.create_image_area(0, self.question_path)
         self.preview_answer = self.create_image_area(1, self.answer_path)
 
@@ -113,16 +115,15 @@ class MainLayer(tk.Frame):
 
     def create_image_area(self, column, image_path):
         """画像プレビュー用のキャンバスを作成して配置する。"""
-        image_width_area = int(APP_WIDTH * IMAGE_AREA_SCALE)
-        image_height_area = int(APP_HEIGHT * IMAGE_AREA_SCALE)
 
         image_area = tk.Canvas(
-            self, width=image_width_area, height=image_height_area, bg="Black"
+            self, width=IMAGE_WIDTH_AREA, height=IMAGE_HEIGHT_AREA, bg="Black"
         )
 
+        kind = "question" if column == 0 else "answer"
         image_area.bind(
             "<Configure>",
-            partial(self.on_resize, canvas=image_area, image_path=image_path),
+            partial(self.on_resize, canvas=image_area, kind=kind),
         )
 
         if not image_path:
@@ -146,15 +147,20 @@ class MainLayer(tk.Frame):
             self.draw_resized_image_on_canvas(
                 image_path,
                 image_area,
-                image_width_area,
-                image_height_area,
+                IMAGE_WIDTH_AREA,
+                IMAGE_HEIGHT_AREA,
             )
 
         image_area.grid(row=1, column=column, sticky="nsew")
         return image_area
 
-    def on_resize(self, event, canvas, image_path):
+    def on_resize(self, event, canvas, kind):
         """キャンバスのサイズ変更時に、画像を新しい領域へ再描画する。"""
+        if kind == "question":
+            image_path = self.question_path
+        else:
+            image_path = self.answer_path
+
         if not image_path:
             self.redraw_rectangle(canvas, event.width, event.height)
         else:
@@ -174,11 +180,11 @@ class MainLayer(tk.Frame):
 
     def redraw_text(self, canvas, width, height):
         """キャンバスのサイズ変更時に、テキストを再描画する。"""
-        width /= 2
-        height /= 2
+        center_x = width // 2
+        center_y = height // 2
 
         canvas.create_text(
-            width, height, text="No Image", fill="black", font=("Meiryo", 16)
+            center_x, center_y, text="No Image", fill="black", font=("Meiryo", 16)
         )
 
     def redraw_image(self, canvas, image_path, width, height):
@@ -245,7 +251,8 @@ class MainLayer(tk.Frame):
         question, answer = utils.get_latest_file(path)
 
         # Ankiのメディアフォルダへコピーする
-        for file_path in (question, answer):
+        # for file_path in (question, answer):
+        for file_path in (self.question_path, self.answer_path):
             file_data = utils.convert_file_to_base64(file_path)
             self.request_anki_connect(
                 "storeMediaFile", filename=file_path.name, data=file_data
@@ -254,8 +261,23 @@ class MainLayer(tk.Frame):
         # 問題・解答をAnkiに追加する
         self.add_question(deck_name, question.name, answer.name)
 
+        # ステータスを問題待機状態に更新
         self.state = STATE_WAITING_QUESTION
         self.update_button_state()
+
+        # プレビューを初期状態に戻す
+        self.question_path = None
+        self.answer_path = None
+        self.redraw_rectangle(
+            self.preview_question,
+            self.preview_question.winfo_width(),
+            self.preview_question.winfo_height(),
+        )
+        self.redraw_rectangle(
+            self.preview_answer,
+            self.preview_answer.winfo_width(),
+            self.preview_answer.winfo_height(),
+        )
 
         messagebox.showinfo("完了", f"Ankiに問題を登録しました")
 
@@ -306,6 +328,7 @@ class MainLayer(tk.Frame):
         self.btn_question["state"] = (
             "normal" if self.state == STATE_WAITING_QUESTION else "disabled"
         )
+
         self.btn_answer["state"] = (
             "normal" if self.state == STATE_WAITING_ANSWER else "disabled"
         )
@@ -366,8 +389,21 @@ class ScreenShotLayer(tk.Canvas):
         # ファイルパス更新
         if state == STATE_WAITING_QUESTION:
             self.root.main_frame.question_path = screenshot_filepath
+            self.root.main_frame.redraw_image(
+                self.root.main_frame.preview_question,
+                self.root.main_frame.question_path,
+                self.root.main_frame.preview_question.winfo_width(),
+                self.root.main_frame.preview_question.winfo_height(),
+            )
+
         elif state == STATE_WAITING_ANSWER:
             self.root.main_frame.answer_path = screenshot_filepath
+            self.root.main_frame.redraw_image(
+                self.root.main_frame.preview_answer,
+                self.root.main_frame.answer_path,
+                self.root.main_frame.preview_answer.winfo_width(),
+                self.root.main_frame.preview_answer.winfo_height(),
+            )
 
         # ステータスの更新
         if self.root.main_frame.state == STATE_WAITING_QUESTION:
@@ -441,40 +477,6 @@ class ScreenShotLayer(tk.Canvas):
             last_number = int(last_file.split("_")[-1])
 
             return f"{today}_{kind}_{last_number + 1:03d}.png"
-
-
-class PreviewImageLayer(tk.Canvas):
-    """単一画像をキャンバス中央に表示する簡易プレビュー層。"""
-
-    def __init__(self, root=None, img=None):
-        super().__init__(master=root, bg="White")
-        self.root = root
-        self.pack(fill="both", expand=True)
-
-        self.img = img
-        self.create_widgets()
-
-    def create_widgets(self):
-        """画像の有無に応じてプレースホルダーまたは画像を描画する。"""
-        if self.img is None:
-            self.root.create_text(150, 100, text="No Image")
-        else:
-            self.create_img()
-
-    def create_img(self):
-        """読み込んだ画像をキャンバス中央に配置する。"""
-        # 画像ファイルを開く
-        self.photo_image = ImageTk.PhotoImage(file=self.img)
-
-        # キャンバスのサイズを取得
-        canvas_width = self.root.winfo_width()
-        canvas_height = self.root.winfo_height()
-
-        self.root.create_image(
-            canvas_width / 2,
-            canvas_height / 2,
-            image=self.img,
-        )
 
 
 if __name__ == "__main__":

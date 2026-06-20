@@ -8,7 +8,10 @@ venv/
 .venv/
 env/
 capture/*
+capture/completed/*
 !capture/.gitkeep
+!capture/completed
+!capture/completed/.gitkeep
 
 # Tool caches
 .mypy_cache/

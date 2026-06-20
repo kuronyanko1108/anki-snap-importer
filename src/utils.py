@@ -19,12 +19,6 @@ def get_latest_file(folder_path: Path) -> tuple[Path | None, Path | None]:
     latest_question_files = sorted(Path(folder_path).glob(f"*{today}*question*.png"))
     latest_answer_files = sorted(Path(folder_path).glob(f"*{today}*answer*.png"))
 
-    # if not latest_question_files:
-    #     raise UtilsException("問題データを取得できませんでした。")
-
-    # if not latest_answer_files:
-    #     raise UtilsException("解答データを取得できませんでした。")
-
     latest_question_file = latest_question_files[-1] if latest_question_files else None
     latest_answer_file = latest_answer_files[-1] if latest_answer_files else None
 
