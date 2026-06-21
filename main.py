@@ -5,11 +5,14 @@ from pathlib import Path
 import ctypes
 import platform
 import requests
+import shutil
 from functools import partial
 
 from src import utils
 
-path = Path.cwd() / "capture"
+CAPTURE_PATH = Path.cwd() / "capture"
+COMPLETED_PATH = "./capture/completed"
+
 APP_WIDTH = 900
 APP_HEIGHT = 450
 
@@ -169,11 +172,16 @@ class MainLayer(tk.Frame):
     def redraw_rectangle(self, canvas, width, height):
         """キャンバスのサイズ変更時に、余白付きの選択枠を再描画する。"""
         canvas.delete("all")
-        width -= MARGIN_SCALE
-        height -= MARGIN_SCALE
+        rect_width = width - MARGIN_SCALE
+        rect_height = height - MARGIN_SCALE
 
         canvas.create_rectangle(
-            MARGIN_SCALE, MARGIN_SCALE, width, height, outline=BLUE, fill=WHITE
+            MARGIN_SCALE,
+            MARGIN_SCALE,
+            rect_width,
+            rect_height,
+            outline=BLUE,
+            fill=WHITE,
         )
 
         self.redraw_text(canvas, width, height)
@@ -248,10 +256,9 @@ class MainLayer(tk.Frame):
         """最新の問題/解答画像をAnkiへメディア登録し、ノートを追加する。"""
         deck_name = "テスト"
         # 最新の問題・解答データのファイルパスを取得する
-        question, answer = utils.get_latest_file(path)
+        question, answer = utils.get_latest_file(CAPTURE_PATH)
 
         # Ankiのメディアフォルダへコピーする
-        # for file_path in (question, answer):
         for file_path in (self.question_path, self.answer_path):
             file_data = utils.convert_file_to_base64(file_path)
             self.request_anki_connect(
@@ -260,6 +267,10 @@ class MainLayer(tk.Frame):
 
         # 問題・解答をAnkiに追加する
         self.add_question(deck_name, question.name, answer.name)
+
+        # 問題・解答を完了ディレクトリに移動する
+        for file in (self.question_path, self.answer_path):
+            self.move_to_completed(file)
 
         # ステータスを問題待機状態に更新
         self.state = STATE_WAITING_QUESTION
@@ -322,6 +333,9 @@ class MainLayer(tk.Frame):
                 "tags": tags,
             },
         )
+
+    def move_to_completed(self, file):
+        shutil.move(file, COMPLETED_PATH)
 
     def update_button_state(self):
         """現在の状態に合わせて各操作ボタンの有効状態を更新する。"""
@@ -440,7 +454,7 @@ class ScreenShotLayer(tk.Canvas):
 
         # スクリーンショットの保存ファイル名を生成する
         file_name = self.create_file_name(state)
-        new_file_name = path / file_name
+        new_file_name = CAPTURE_PATH / file_name
 
         # スクリーンショットレイヤーを一時的に非表示にする
         self.root.withdraw()
@@ -464,19 +478,34 @@ class ScreenShotLayer(tk.Canvas):
         today = utils.get_today_ymd()
 
         if state == STATE_WAITING_QUESTION:
-            today_files = sorted(Path(path).glob(f"*{today}*question*.png"))
+            # today_files = Path(path).glob(f"*{today}*question*.png")
+            today_files = self.get_today_file_list("question*.png")
         elif state == STATE_WAITING_ANSWER:
-            today_files = sorted(Path(path).glob(f"*{today}*answer*.png"))
+            # today_files = sorted(Path(path).glob(f"*{today}*answer*.png"))
+            today_files = self.get_today_file_list("answer*.png")
 
         kind = "question" if state == STATE_WAITING_QUESTION else "answer"
 
         if not today_files:
             return f"{today}_{kind}_001.png"
         else:
-            last_file = today_files[-1].stem
+            last_file = today_files[-1]
             last_number = int(last_file.split("_")[-1])
 
             return f"{today}_{kind}_{last_number + 1:03d}.png"
+
+    def get_today_file_list(self, file_pattern):
+        """当日分の撮影フォルダと完了フォルダから、指定ファイル名パターンに一致するファイル一覧を返す。"""
+        today = utils.get_today_ymd()
+
+        files = set()
+        files.update(Path(CAPTURE_PATH).glob(f"*{today}*{file_pattern}"))
+        files.update(Path(COMPLETED_PATH).glob(f"*{today}*{file_pattern}"))
+
+        # ファイル名でリスト化してソート
+        sorted_files = sorted(list(file.stem for file in files))
+
+        return sorted_files
 
 
 if __name__ == "__main__":
