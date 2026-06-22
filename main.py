@@ -21,7 +21,6 @@ IMAGE_WIDTH_AREA = int(APP_WIDTH * IMAGE_AREA_SCALE)
 IMAGE_HEIGHT_AREA = int(APP_HEIGHT * IMAGE_AREA_SCALE)
 MARGIN_SCALE = 5
 
-
 STATE_WAITING_QUESTION = 0
 STATE_WAITING_ANSWER = 1
 STATE_READY_TO_REGISTER = 2
@@ -77,6 +76,9 @@ class MainLayer(tk.Frame):
         self.answer_path = None
         self.state = STATE_WAITING_QUESTION
 
+        self.root.bind("<F5>", self.on_screenshot_hotkey)
+        self.root.bind("<Control-s>", self.on_register_hotkey)
+
         self.images = []
         self.create_widgets()
         self.pack(fill="both", expand=True)
@@ -93,10 +95,10 @@ class MainLayer(tk.Frame):
 
         # スクリーンショット撮影ボタンの配置
         self.btn_question = self.create_screenshot_button(
-            0, "問題を撮影", STATE_WAITING_QUESTION
+            0, "問題を撮影(F5)", STATE_WAITING_QUESTION
         )
         self.btn_answer = self.create_screenshot_button(
-            1, "解答を撮影", STATE_WAITING_ANSWER
+            1, "解答を撮影(F5)", STATE_WAITING_ANSWER
         )
 
         # 画像プレビューエリアの配置
@@ -105,6 +107,22 @@ class MainLayer(tk.Frame):
 
         # Anki登録ボタンの配置
         self.btn_anki_register = self.create_anki_register_button()
+
+    def on_screenshot_hotkey(self, event):
+        """F5キー押下時にスクリーンショット撮影モードを開始する。"""
+
+        if self.state == STATE_READY_TO_REGISTER:
+            return "break"
+
+        self.show_screenshot(self.state)
+
+    def on_register_hotkey(self, event):
+        """Ctrl+sキー押下時にAnki登録を開始する。"""
+
+        if self.state != STATE_READY_TO_REGISTER:
+            return "break"
+
+        self.on_click_anki_register()
 
     def create_screenshot_button(self, column, text_name, state):
         """指定列に撮影ボタンを作成し、状態に応じて有効/無効を設定する。"""
@@ -231,7 +249,7 @@ class MainLayer(tk.Frame):
     def create_anki_register_button(self):
         """Anki登録ボタンを作成し、現在状態に応じて活性を切り替える。"""
         btn_anki_register = tk.Button(self)
-        btn_anki_register["text"] = "Ankiに登録"
+        btn_anki_register["text"] = "Ankiに登録(Ctrl+s)"
         btn_anki_register["command"] = self.on_click_anki_register
         btn_anki_register["state"] = (
             "normal" if self.state == STATE_READY_TO_REGISTER else "disabled"
@@ -311,7 +329,7 @@ class MainLayer(tk.Frame):
             return result
 
         except requests.exceptions.ConnectionError as e:
-            print(e)
+            messagebox.showerror("登録エラー", "Ankiが起動していません")
             raise RuntimeError("Ankiが起動していません")
 
     def add_question(self, deck_name, front, back, tags=None):
@@ -335,6 +353,7 @@ class MainLayer(tk.Frame):
         )
 
     def move_to_completed(self, file):
+        """撮影ファイルを完了ディレクトリに移動する。"""
         shutil.move(file, COMPLETED_PATH)
 
     def update_button_state(self):
@@ -371,6 +390,7 @@ class ScreenShotLayer(tk.Canvas):
         self.bind("<ButtonPress-1>", self.on_press)
         self.bind("<B1-Motion>", self.on_drag)
         self.bind("<ButtonRelease-1>", lambda e: self.on_release(e, state))
+        self.bind("<ButtonPress-3>", self.on_screenshot_cancel)
 
     def reset_coordinate(self):
         """ドラッグ開始/終了座標を初期化する。"""
@@ -394,6 +414,10 @@ class ScreenShotLayer(tk.Canvas):
         """ドラッグ終了時に撮影を実行し、メイン画面へ復帰する。"""
         self.end_x = event.x
         self.end_y = event.y
+
+        # 単クリックによる誤撮影を防ぐため、選択範囲なしなら中断
+        if self.start_x == self.end_x and self.start_y == self.end_y:
+            return "break"
 
         screenshot_filepath = self.screenshot(state)
 
@@ -430,6 +454,12 @@ class ScreenShotLayer(tk.Canvas):
 
         self.root.main_frame.pack(fill="both", expand=True)
 
+    def on_screenshot_cancel(self, event):
+        """右クリックでスクリーンショット撮影をキャンセルし、メイン画面へ戻る。"""
+        self.destroy()
+        self.root.show_main_window()
+        self.root.main_frame.pack(fill="both", expand=True)
+
     def create_screenshot_area(self):
         """現在の開始点/終点に基づいて選択矩形を再描画する。"""
         if self.rect_id:
@@ -463,7 +493,7 @@ class ScreenShotLayer(tk.Canvas):
             img = ImageGrab.grab(bbox=(x1, y1, x2, y2))
             img.save(new_file_name)
             messagebox.showinfo("完了", "保存しました")
-        except OSError as e:
+        except Exception as e:
             messagebox.showerror(
                 "撮影エラー", f"スクリーンショット取得に失敗しました\n{e}"
             )
@@ -478,10 +508,8 @@ class ScreenShotLayer(tk.Canvas):
         today = utils.get_today_ymd()
 
         if state == STATE_WAITING_QUESTION:
-            # today_files = Path(path).glob(f"*{today}*question*.png")
             today_files = self.get_today_file_list("question*.png")
         elif state == STATE_WAITING_ANSWER:
-            # today_files = sorted(Path(path).glob(f"*{today}*answer*.png"))
             today_files = self.get_today_file_list("answer*.png")
 
         kind = "question" if state == STATE_WAITING_QUESTION else "answer"
@@ -502,7 +530,7 @@ class ScreenShotLayer(tk.Canvas):
         files.update(Path(CAPTURE_PATH).glob(f"*{today}*{file_pattern}"))
         files.update(Path(COMPLETED_PATH).glob(f"*{today}*{file_pattern}"))
 
-        # ファイル名でリスト化してソート
+        # ファイル名のみでリスト化してソート
         sorted_files = sorted(list(file.stem for file in files))
 
         return sorted_files
