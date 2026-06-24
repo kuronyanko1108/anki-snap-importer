@@ -7,8 +7,18 @@ import platform
 import requests
 import shutil
 from functools import partial
+from dotenv import load_dotenv
+import os
+from src.ocr.ocr_component import get_anki_tags_from_image
+from src.utils import get_latest_file, get_today_ymd, convert_file_to_base64
 
-from src import utils
+# .env ファイルを読み込む
+load_dotenv()
+
+# 設定値を取得
+TESSERACT_PATH = os.getenv("TESSERACT_PATH")
+ANKI_CONNECT_URL = os.getenv("ANKI_CONNECT_URL")
+
 
 CAPTURE_PATH = Path.cwd() / "capture"
 COMPLETED_PATH = "./capture/completed"
@@ -27,6 +37,7 @@ STATE_READY_TO_REGISTER = 2
 
 WHITE = "white"
 BLUE = "blue"
+
 
 # ==========================================
 # 1. DPIスケール（拡大率）のずれを防ぐ設定
@@ -274,17 +285,23 @@ class MainLayer(tk.Frame):
         """最新の問題/解答画像をAnkiへメディア登録し、ノートを追加する。"""
         deck_name = "テスト"
         # 最新の問題・解答データのファイルパスを取得する
-        question, answer = utils.get_latest_file(CAPTURE_PATH)
+        question, answer = get_latest_file(CAPTURE_PATH)
+        anki_tag_set = set()
 
-        # Ankiのメディアフォルダへコピーする
         for file_path in (self.question_path, self.answer_path):
-            file_data = utils.convert_file_to_base64(file_path)
+
+            # Ankiのメディアフォルダへコピーする
+            file_data = convert_file_to_base64(file_path)
             self.request_anki_connect(
                 "storeMediaFile", filename=file_path.name, data=file_data
             )
 
+            # Ankiの登録用のタグ情報を取得する
+            anki_tag_set.update(get_anki_tags_from_image(file_path))
+            anki_tags = list(anki_tag_set)
+
         # 問題・解答をAnkiに追加する
-        self.add_question(deck_name, question.name, answer.name)
+        self.add_question(deck_name, question.name, answer.name, tags=anki_tags)
 
         # 問題・解答を完了ディレクトリに移動する
         for file in (self.question_path, self.answer_path):
@@ -312,9 +329,10 @@ class MainLayer(tk.Frame):
 
     def request_anki_connect(self, action, **params):
         """AnkiConnect APIへリクエストを送り、結果JSONを返す。"""
+
         try:
             response = requests.post(
-                "http://localhost:8765",
+                ANKI_CONNECT_URL,
                 json={"action": action, "params": params, "version": 6},
             )
 
@@ -505,7 +523,7 @@ class ScreenShotLayer(tk.Canvas):
 
     def create_file_name(self, state):
         """当日分の連番を考慮した保存ファイル名を生成する。"""
-        today = utils.get_today_ymd()
+        today = get_today_ymd()
 
         if state == STATE_WAITING_QUESTION:
             today_files = self.get_today_file_list("question*.png")
@@ -524,7 +542,7 @@ class ScreenShotLayer(tk.Canvas):
 
     def get_today_file_list(self, file_pattern):
         """当日分の撮影フォルダと完了フォルダから、指定ファイル名パターンに一致するファイル一覧を返す。"""
-        today = utils.get_today_ymd()
+        today = get_today_ymd()
 
         files = set()
         files.update(Path(CAPTURE_PATH).glob(f"*{today}*{file_pattern}"))
