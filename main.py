@@ -20,16 +20,20 @@ TESSERACT_PATH = os.getenv("TESSERACT_PATH")
 ANKI_CONNECT_URL = os.getenv("ANKI_CONNECT_URL")
 
 
-CAPTURE_PATH = Path.cwd() / "capture"
-COMPLETED_PATH = "./capture/completed"
+CAPTURE_PATH = Path(__file__).resolve().parents[0] / "capture"
+COMPLETED_PATH = CAPTURE_PATH / "completed"
 
-APP_WIDTH = 900
+APP_WIDTH = 670
 APP_HEIGHT = 450
+WINDOWS_TASKBAR_SIZE = 88
 
 IMAGE_AREA_SCALE = 0.75
 IMAGE_WIDTH_AREA = int(APP_WIDTH * IMAGE_AREA_SCALE)
 IMAGE_HEIGHT_AREA = int(APP_HEIGHT * IMAGE_AREA_SCALE)
 MARGIN_SCALE = 5
+
+CAPTURE_TARGET_QUESTION = "question"
+CAPTURE_TARGET_ANSWER = "answer"
 
 STATE_WAITING_QUESTION = 0
 STATE_WAITING_ANSWER = 1
@@ -65,10 +69,10 @@ class App(tk.Tk):
     def default_main_window_position(self):
         """メインウィンドウの初期サイズ文字列を返す。"""
         x_position = self.winfo_screenwidth() - APP_WIDTH
-        y_position = self.winfo_screenheight() - APP_HEIGHT
+        y_position = self.winfo_screenheight() - APP_HEIGHT - WINDOWS_TASKBAR_SIZE
 
-        # return f"{APP_WIDTH}x{APP_HEIGHT}+{x_position}+{y_position}"
-        return f"{APP_WIDTH}x{APP_HEIGHT}"
+        return f"{APP_WIDTH}x{APP_HEIGHT}+{x_position}+{y_position}"
+        # return f"{APP_WIDTH}x{APP_HEIGHT}"
 
     def show_main_window(self):
         """撮影モード終了後に通常ウィンドウ表示へ戻す。"""
@@ -116,6 +120,13 @@ class MainLayer(tk.Frame):
         self.preview_question = self.create_image_area(0, self.question_path)
         self.preview_answer = self.create_image_area(1, self.answer_path)
 
+        # 再撮影ボタンの配置
+        self.btn_reshooting_question = self.create_reshooting_button(
+            0, "問題を再撮影", STATE_WAITING_QUESTION, CAPTURE_TARGET_QUESTION
+        )
+        self.btn_reshooting_answer = self.create_reshooting_button(
+            1, "解答を再撮影", STATE_WAITING_ANSWER, CAPTURE_TARGET_ANSWER
+        )
         # Anki登録ボタンの配置
         self.btn_anki_register = self.create_anki_register_button()
 
@@ -125,7 +136,13 @@ class MainLayer(tk.Frame):
         if self.state == STATE_READY_TO_REGISTER:
             return "break"
 
-        self.show_screenshot(self.state)
+        capture_target = (
+            CAPTURE_TARGET_QUESTION
+            if self.state == STATE_WAITING_QUESTION
+            else CAPTURE_TARGET_ANSWER
+        )
+
+        self.show_screenshot(capture_target)
 
     def on_register_hotkey(self, event):
         """Ctrl+sキー押下時にAnki登録を開始する。"""
@@ -185,6 +202,39 @@ class MainLayer(tk.Frame):
 
         image_area.grid(row=1, column=column, sticky="nsew")
         return image_area
+
+    def create_reshooting_button(self, column, text_name, state, capture_target):
+        """指定列に撮影ボタンを作成し、状態に応じて有効/無効を設定する。"""
+        btn_screenshot = tk.Button(self)
+        btn_screenshot["text"] = text_name
+        btn_screenshot["command"] = lambda c=capture_target: self.on_click_reshooting(c)
+        if capture_target == CAPTURE_TARGET_QUESTION:
+            btn_screenshot["state"] = (
+                "normal"
+                if self.state in (STATE_WAITING_ANSWER, STATE_READY_TO_REGISTER)
+                else "disabled"
+            )
+        elif capture_target == CAPTURE_TARGET_ANSWER:
+            btn_screenshot["state"] = (
+                "normal" if state == STATE_READY_TO_REGISTER else "disabled"
+            )
+
+        btn_screenshot.grid(row=2, column=column, padx=1, sticky="we")
+        return btn_screenshot
+
+    def create_anki_register_button(self):
+        """Anki登録ボタンを作成し、現在状態に応じて活性を切り替える。"""
+        btn_anki_register = tk.Button(self)
+        btn_anki_register["text"] = "Ankiに登録(Ctrl+s)"
+        btn_anki_register["height"] = 2
+        btn_anki_register["command"] = self.on_click_anki_register
+        btn_anki_register["state"] = (
+            "normal" if self.state == STATE_READY_TO_REGISTER else "disabled"
+        )
+
+        btn_anki_register.grid(row=3, column=0, columnspan=2, sticky="nsew")
+
+        return btn_anki_register
 
     def on_resize(self, event, canvas, kind):
         """キャンバスのサイズ変更時に、画像を新しい領域へ再描画する。"""
@@ -257,33 +307,31 @@ class MainLayer(tk.Frame):
             image=photo_image,
         )
 
-    def create_anki_register_button(self):
-        """Anki登録ボタンを作成し、現在状態に応じて活性を切り替える。"""
-        btn_anki_register = tk.Button(self)
-        btn_anki_register["text"] = "Ankiに登録(Ctrl+s)"
-        btn_anki_register["command"] = self.on_click_anki_register
-        btn_anki_register["state"] = (
-            "normal" if self.state == STATE_READY_TO_REGISTER else "disabled"
-        )
-
-        btn_anki_register.grid(row=2, column=0, columnspan=2, sticky="nsew")
-
-        return btn_anki_register
-
     def on_click_screenshot(self, state):
         """撮影ボタン押下時にスクリーンショットレイヤーを表示する。"""
-        self.show_screenshot(state)
 
-    def show_screenshot(self, state):
+        capture_target = (
+            CAPTURE_TARGET_QUESTION
+            if state == STATE_WAITING_QUESTION
+            else CAPTURE_TARGET_ANSWER
+        )
+
+        self.show_screenshot(capture_target)
+
+    def on_click_reshooting(self, capture_target):
+        """最撮影ボタン押下時にスクリーンショットレイヤーを表示する。"""
+        self.show_screenshot(capture_target, True)
+
+    def show_screenshot(self, capture_target, is_recapture=False):
         """メイン画面を隠してスクリーンショット用レイヤーへ遷移する。"""
 
         self.pack_forget()
-        screen_layer = ScreenShotLayer(self.root, state)
+        screen_layer = ScreenShotLayer(self.root, capture_target, is_recapture)
         screen_layer.pack(fill="both", expand=True)
 
     def on_click_anki_register(self):
         """最新の問題/解答画像をAnkiへメディア登録し、ノートを追加する。"""
-        deck_name = "テスト"
+        deck_name = "応用情報技術者試験"
         # 最新の問題・解答データのファイルパスを取得する
         question, answer = get_latest_file(CAPTURE_PATH)
         anki_tag_set = set()
@@ -329,7 +377,6 @@ class MainLayer(tk.Frame):
 
     def request_anki_connect(self, action, **params):
         """AnkiConnect APIへリクエストを送り、結果JSONを返す。"""
-
         try:
             response = requests.post(
                 ANKI_CONNECT_URL,
@@ -388,11 +435,21 @@ class MainLayer(tk.Frame):
             "normal" if self.state == STATE_READY_TO_REGISTER else "disabled"
         )
 
+        self.btn_reshooting_question["state"] = (
+            "normal"
+            if self.state in (STATE_WAITING_ANSWER, STATE_READY_TO_REGISTER)
+            else "disabled"
+        )
+
+        self.btn_reshooting_answer["state"] = (
+            "normal" if self.state == STATE_READY_TO_REGISTER else "disabled"
+        )
+
 
 class ScreenShotLayer(tk.Canvas):
     """画面上でドラッグ選択を受け付け、指定範囲を画像として保存するレイヤー。"""
 
-    def __init__(self, root, state):
+    def __init__(self, root, capture_target, is_recapture):
         super().__init__(master=root)
         self.root = root
         self.rect_id = None
@@ -407,7 +464,10 @@ class ScreenShotLayer(tk.Canvas):
         # イベントのバインド
         self.bind("<ButtonPress-1>", self.on_press)
         self.bind("<B1-Motion>", self.on_drag)
-        self.bind("<ButtonRelease-1>", lambda e: self.on_release(e, state))
+        self.bind(
+            "<ButtonRelease-1>",
+            lambda e: self.on_release(e, capture_target, is_recapture),
+        )
         self.bind("<ButtonPress-3>", self.on_screenshot_cancel)
 
     def reset_coordinate(self):
@@ -428,7 +488,7 @@ class ScreenShotLayer(tk.Canvas):
         self.end_y = event.y
         self.create_screenshot_area()
 
-    def on_release(self, event, state):
+    def on_release(self, event, capture_target, is_recapture):
         """ドラッグ終了時に撮影を実行し、メイン画面へ復帰する。"""
         self.end_x = event.x
         self.end_y = event.y
@@ -437,13 +497,17 @@ class ScreenShotLayer(tk.Canvas):
         if self.start_x == self.end_x and self.start_y == self.end_y:
             return "break"
 
-        screenshot_filepath = self.screenshot(state)
+        # スクリーンショット先のファイルパスを取得
+        screenshot_filepath = self.create_filepath(capture_target)
+
+        # スクリーンショットの実施
+        self.screenshot(screenshot_filepath)
 
         self.destroy()
         self.root.show_main_window()
 
         # ファイルパス更新
-        if state == STATE_WAITING_QUESTION:
+        if capture_target == CAPTURE_TARGET_QUESTION:
             self.root.main_frame.question_path = screenshot_filepath
             self.root.main_frame.redraw_image(
                 self.root.main_frame.preview_question,
@@ -452,7 +516,7 @@ class ScreenShotLayer(tk.Canvas):
                 self.root.main_frame.preview_question.winfo_height(),
             )
 
-        elif state == STATE_WAITING_ANSWER:
+        elif capture_target == CAPTURE_TARGET_ANSWER:
             self.root.main_frame.answer_path = screenshot_filepath
             self.root.main_frame.redraw_image(
                 self.root.main_frame.preview_answer,
@@ -461,11 +525,12 @@ class ScreenShotLayer(tk.Canvas):
                 self.root.main_frame.preview_answer.winfo_height(),
             )
 
-        # ステータスの更新
-        if self.root.main_frame.state == STATE_WAITING_QUESTION:
-            self.root.main_frame.state = STATE_WAITING_ANSWER
-        elif self.root.main_frame.state == STATE_WAITING_ANSWER:
-            self.root.main_frame.state = STATE_READY_TO_REGISTER
+        # ステータスの更新（再撮影時はスキップ）
+        if not is_recapture:
+            if self.root.main_frame.state == STATE_WAITING_QUESTION:
+                self.root.main_frame.state = STATE_WAITING_ANSWER
+            elif self.root.main_frame.state == STATE_WAITING_ANSWER:
+                self.root.main_frame.state = STATE_READY_TO_REGISTER
 
         # ボタンの有効化・無効化
         self.root.main_frame.update_button_state()
@@ -493,23 +558,19 @@ class ScreenShotLayer(tk.Canvas):
             fill="white",
         )
 
-    def screenshot(self, state):
+    def screenshot(self, file_path):
         """選択範囲をキャプチャし、種別に応じたファイル名で保存する。"""
         x1 = min(self.start_x, self.end_x) + self.border_width
         y1 = min(self.start_y, self.end_y) + self.border_width
         x2 = max(self.start_x, self.end_x) - self.border_width
         y2 = max(self.start_y, self.end_y) - self.border_width
 
-        # スクリーンショットの保存ファイル名を生成する
-        file_name = self.create_file_name(state)
-        new_file_name = CAPTURE_PATH / file_name
-
         # スクリーンショットレイヤーを一時的に非表示にする
         self.root.withdraw()
 
         try:
             img = ImageGrab.grab(bbox=(x1, y1, x2, y2))
-            img.save(new_file_name)
+            img.save(file_path)
             messagebox.showinfo("完了", "保存しました")
         except Exception as e:
             messagebox.showerror(
@@ -519,26 +580,22 @@ class ScreenShotLayer(tk.Canvas):
         # スクリーンショットレイヤーを再表示する
         self.root.deiconify()
 
-        return new_file_name
-
-    def create_file_name(self, state):
+    def create_filepath(self, capture_target):
         """当日分の連番を考慮した保存ファイル名を生成する。"""
+
+        # 今日日付のファイルの一覧を取得
         today = get_today_ymd()
-
-        if state == STATE_WAITING_QUESTION:
-            today_files = self.get_today_file_list("question*.png")
-        elif state == STATE_WAITING_ANSWER:
-            today_files = self.get_today_file_list("answer*.png")
-
-        kind = "question" if state == STATE_WAITING_QUESTION else "answer"
+        today_files = self.get_today_file_list(f"{capture_target}*.png")
 
         if not today_files:
-            return f"{today}_{kind}_001.png"
+            file_name = f"{today}_{capture_target}_001.png"
         else:
             last_file = today_files[-1]
             last_number = int(last_file.split("_")[-1])
 
-            return f"{today}_{kind}_{last_number + 1:03d}.png"
+            file_name = f"{today}_{capture_target}_{last_number + 1:03d}.png"
+
+        return CAPTURE_PATH / file_name
 
     def get_today_file_list(self, file_pattern):
         """当日分の撮影フォルダと完了フォルダから、指定ファイル名パターンに一致するファイル一覧を返す。"""
