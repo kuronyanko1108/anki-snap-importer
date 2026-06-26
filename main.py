@@ -11,12 +11,13 @@ from dotenv import load_dotenv
 import os
 from src.ocr.ocr_component import get_anki_tags_from_image
 from src.utils import get_latest_file, get_today_ymd, convert_file_to_base64
+import subprocess
 
 # .env ファイルを読み込む
 load_dotenv()
 
 # 設定値を取得
-TESSERACT_PATH = os.getenv("TESSERACT_PATH")
+ANKI_APP_PATH = os.getenv("ANKI_EXE_PATH")
 ANKI_CONNECT_URL = os.getenv("ANKI_CONNECT_URL")
 
 
@@ -66,6 +67,8 @@ class App(tk.Tk):
         self.main_frame = MainLayer(self)
         self.main_frame.pack(fill="both", expand=True)
 
+        self.connect_anki()
+
     def default_main_window_position(self):
         """メインウィンドウの初期サイズ文字列を返す。"""
         x_position = self.winfo_screenwidth() - APP_WIDTH
@@ -79,6 +82,10 @@ class App(tk.Tk):
         self.attributes("-fullscreen", False)
         self.attributes("-alpha", 1.0)
         self.configure(bg="SystemButtonFace")
+
+    def connect_anki(self):
+        "anki.exeを起動する"
+        subprocess.Popen(ANKI_APP_PATH)
 
 
 class MainLayer(tk.Frame):
