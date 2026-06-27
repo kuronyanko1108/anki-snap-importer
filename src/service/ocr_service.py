@@ -36,8 +36,7 @@ def get_anki_tags_from_image(fale_path: str | Path) -> list[str]:
     tool = tools[0]
 
     # 画像のファイルを指定する
-    img_path = fale_path
-    img = Image.open(img_path)
+    img = Image.open(fale_path)
 
     # 画像からテキストを抽出
     builder = pyocr.builders.TextBuilder(tesseract_layout=6)

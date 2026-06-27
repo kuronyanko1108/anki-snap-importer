@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-from PIL import ImageGrab, ImageTk, Image
+from PIL import ImageTk, Image
 from pathlib import Path
 import ctypes
 import platform
@@ -9,8 +9,9 @@ import shutil
 from functools import partial
 from dotenv import load_dotenv
 import os
-from src.ocr.ocr_component import get_anki_tags_from_image
-from src.utils import get_latest_file, get_today_ymd, convert_file_to_base64
+from src.service.ocr_service import get_anki_tags_from_image
+from src.service.capture_service import create_filepath, screenshot
+from src.utils import get_latest_file, convert_file_to_base64
 import subprocess
 
 # .env ファイルを読み込む
@@ -505,17 +506,33 @@ class ScreenShotLayer(tk.Canvas):
             return "break"
 
         # スクリーンショット先のファイルパスを取得
-        screenshot_filepath = self.create_filepath(capture_target)
+        screenshot_file_path = create_filepath(capture_target)
+
+        # スクリーンショットレイヤーを一時的に非表示にする
+        self.root.withdraw()
+        is_saved = False
 
         # スクリーンショットの実施
-        self.screenshot(screenshot_filepath)
+        try:
+            bbox = self.calculate_capture_bbox()
+            screenshot(screenshot_file_path, bbox)
+            is_saved = True
+        except Exception as e:
+            messagebox.showerror(
+                "撮影エラー", f"スクリーンショット取得に失敗しました\n{e}"
+            )
+        finally:
+            self.root.deiconify()
 
-        self.destroy()
-        self.root.show_main_window()
+        if not is_saved:
+            self.return_to_main_view()
+            return "break"
+
+        messagebox.showinfo("完了", "保存しました")
 
         # ファイルパス更新
         if capture_target == CAPTURE_TARGET_QUESTION:
-            self.root.main_frame.question_path = screenshot_filepath
+            self.root.main_frame.question_path = screenshot_file_path
             self.root.main_frame.redraw_image(
                 self.root.main_frame.preview_question,
                 self.root.main_frame.question_path,
@@ -524,7 +541,7 @@ class ScreenShotLayer(tk.Canvas):
             )
 
         elif capture_target == CAPTURE_TARGET_ANSWER:
-            self.root.main_frame.answer_path = screenshot_filepath
+            self.root.main_frame.answer_path = screenshot_file_path
             self.root.main_frame.redraw_image(
                 self.root.main_frame.preview_answer,
                 self.root.main_frame.answer_path,
@@ -542,10 +559,14 @@ class ScreenShotLayer(tk.Canvas):
         # ボタンの有効化・無効化
         self.root.main_frame.update_button_state()
 
-        self.root.main_frame.pack(fill="both", expand=True)
+        self.return_to_main_view()
 
     def on_screenshot_cancel(self, event):
         """右クリックでスクリーンショット撮影をキャンセルし、メイン画面へ戻る。"""
+        self.return_to_main_view()
+
+    def return_to_main_view(self):
+        """スクリーンショットレイヤーを閉じてメイン画面を表示する。"""
         self.destroy()
         self.root.show_main_window()
         self.root.main_frame.pack(fill="both", expand=True)
@@ -562,60 +583,17 @@ class ScreenShotLayer(tk.Canvas):
             self.end_y,
             outline=BLUE,
             width=self.border_width,
-            fill="white",
+            fill=WHITE,
         )
 
-    def screenshot(self, file_path):
-        """選択範囲をキャプチャし、種別に応じたファイル名で保存する。"""
-        x1 = min(self.start_x, self.end_x) + self.border_width
-        y1 = min(self.start_y, self.end_y) + self.border_width
-        x2 = max(self.start_x, self.end_x) - self.border_width
-        y2 = max(self.start_y, self.end_y) - self.border_width
-
-        # スクリーンショットレイヤーを一時的に非表示にする
-        self.root.withdraw()
-
-        try:
-            img = ImageGrab.grab(bbox=(x1, y1, x2, y2))
-            img.save(file_path)
-            messagebox.showinfo("完了", "保存しました")
-        except Exception as e:
-            messagebox.showerror(
-                "撮影エラー", f"スクリーンショット取得に失敗しました\n{e}"
-            )
-
-        # スクリーンショットレイヤーを再表示する
-        self.root.deiconify()
-
-    def create_filepath(self, capture_target):
-        """当日分の連番を考慮した保存ファイル名を生成する。"""
-
-        # 今日日付のファイルの一覧を取得
-        today = get_today_ymd()
-        today_files = self.get_today_file_list(f"{capture_target}*.png")
-
-        if not today_files:
-            file_name = f"{today}_{capture_target}_001.png"
-        else:
-            last_file = today_files[-1]
-            last_number = int(last_file.split("_")[-1])
-
-            file_name = f"{today}_{capture_target}_{last_number + 1:03d}.png"
-
-        return CAPTURE_PATH / file_name
-
-    def get_today_file_list(self, file_pattern):
-        """当日分の撮影フォルダと完了フォルダから、指定ファイル名パターンに一致するファイル一覧を返す。"""
-        today = get_today_ymd()
-
-        files = set()
-        files.update(Path(CAPTURE_PATH).glob(f"*{today}*{file_pattern}"))
-        files.update(Path(COMPLETED_PATH).glob(f"*{today}*{file_pattern}"))
-
-        # ファイル名のみでリスト化してソート
-        sorted_files = sorted(list(file.stem for file in files))
-
-        return sorted_files
+    def calculate_capture_bbox(self) -> tuple[int, int, int, int]:
+        """ドラッグ座標と枠線幅から ImageGrab 用の bbox を返す。"""
+        return (
+            min(self.start_x, self.end_x) + self.border_width,
+            min(self.start_y, self.end_y) + self.border_width,
+            max(self.start_x, self.end_x) - self.border_width,
+            max(self.start_y, self.end_y) - self.border_width,
+        )
 
 
 if __name__ == "__main__":
