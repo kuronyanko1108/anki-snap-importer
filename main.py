@@ -354,7 +354,8 @@ class MainLayer(tk.Frame):
 
             # Ankiの登録用のタグ情報を取得する
             anki_tag_set.update(get_anki_tags_from_image(file_path))
-            anki_tags = list(anki_tag_set)
+
+        anki_tags = list(anki_tag_set)
 
         # 問題・解答をAnkiに追加する
         self.add_question(deck_name, question.name, answer.name, tags=anki_tags)

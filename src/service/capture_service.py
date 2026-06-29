@@ -22,8 +22,8 @@ def create_filepath(capture_target: str) -> Path:
     if not today_file_name_list:
         file_name = f"{today}_{capture_target}_001.png"
     else:
-        last_file_name = today_file_name_list[-1]
-        file_number = int(last_file_name.split("_")[-1])
+        latest_file_name = today_file_name_list[-1]
+        file_number = int(latest_file_name.split("_")[-1])
 
         file_name = f"{today}_{capture_target}_{file_number + 1:03d}.png"
 
