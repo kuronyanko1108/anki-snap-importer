@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('config', 'config'), ('capture', 'capture'), ('.env', '.')]
+datas = [('config', 'config'), ('capture', 'capture'), ('icon_img', 'icon_img'), ('.env', '.')]
 binaries = []
 hiddenimports = ['pyocr.builders']
 tmp_ret = collect_all('janome')
@@ -28,12 +28,13 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='Anki-SNAP-IMPORTER',
+    name='Anki-Snap-Importer',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     console=False,
+    icon='icon_img/icon-app.ico',
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

@@ -9,6 +9,7 @@ import shutil
 from functools import partial
 from dotenv import load_dotenv
 import os
+import sys
 from src.service.ocr_service import get_anki_tags_from_image
 from src.service.capture_service import create_filepath, screenshot
 from src.utils import get_latest_file, convert_file_to_base64
@@ -45,6 +46,15 @@ WHITE = "white"
 BLUE = "blue"
 
 
+def get_resource_path(relative_path):
+    """PyInstaller 実行時も開発時も共通でリソースファイルへの絶対パスを返す。"""
+    if getattr(sys, "frozen", False):
+        base_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    else:
+        base_dir = Path(__file__).resolve().parent
+    return base_dir / relative_path
+
+
 # ==========================================
 # 1. DPIスケール（拡大率）のずれを防ぐ設定
 # ==========================================
@@ -63,12 +73,39 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AnkiSnapImporter")
+        self.apply_app_icon()
         self.geometry(self.default_main_window_position())
 
         self.main_frame = MainLayer(self)
         self.main_frame.pack(fill="both", expand=True)
 
         self.connect_anki()
+
+    def apply_app_icon(self):
+        """実行ファイルアイコンとは別に、Tkウィンドウのアイコンも明示的に設定する。"""
+        if platform.system() == "Windows":
+            try:
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                    "AnkiSnapImporter"
+                )
+            except Exception:
+                pass
+
+        icon_path = get_resource_path("icon_img/icon-app.ico")
+        if not icon_path.exists():
+            return
+
+        try:
+            self.iconbitmap(default=str(icon_path))
+        except Exception:
+            pass
+
+        try:
+            icon_image = ImageTk.PhotoImage(Image.open(icon_path))
+            self._icon_image = icon_image
+            self.iconphoto(True, icon_image)
+        except Exception:
+            pass
 
     def default_main_window_position(self):
         """メインウィンドウの初期サイズ文字列を返す。"""
